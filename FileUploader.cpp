@@ -39,7 +39,6 @@ void ChooseFileDlg::onFileSelect(bool)
 	httpMultiPart->append(httpFilePart);
 
 	QNetworkAccessManager manager;
-
 	QNetworkReply *reply = manager.post(QNetworkRequest(QUrl("http://127.0.0.1:3000/media/upload")), httpMultiPart);
 	connect(reply, &QNetworkReply::uploadProgress, [&](qint64 bytesSent, qint64 bytesTotal){
 		if (bytesSent && bytesTotal) progress.setValue((100 * bytesSent) / bytesTotal);
@@ -48,15 +47,19 @@ void ChooseFileDlg::onFileSelect(bool)
 	file->setParent(httpMultiPart);
 	httpMultiPart->setParent(reply);
 
+	connect(&progress, &QProgressDialog::canceled, [&]() {
+		reply->abort();
+	});
+
 	while (reply->isRunning()) {
 		QCoreApplication::processEvents();
-		if (progress.wasCanceled()) {
-			qDebug() << "uploading: cancelled";
-			return;
-		}
 	}
 
-	qDebug() << "uploading: completed";
+	if (reply->error() != QNetworkReply::NoError) {
+		if (reply->error() != QNetworkReply::OperationCanceledError)
+			QMessageBox::warning(this, tr("Failed to upload"), reply->errorString());
+		return;
+	}
 
 	QByteArray content = reply->readAll();
 	qDebug() << content;
